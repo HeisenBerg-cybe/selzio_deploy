@@ -197,7 +197,7 @@ export function Navbar() {
             </Link>
 
             {/* Navigation Items */}
-            <div ref={navRef} className="hidden md:flex items-center space-x-8">
+            <div ref={navRef} className="hidden md:flex items-center space-x-8 z-20">
               {navItems.map((item) => (
                 <Link 
                   key={item.href}
