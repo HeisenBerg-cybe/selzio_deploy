@@ -48,7 +48,8 @@ export default function ProductReviews({ product, toast }) {
     loading: initialLoading,
     error,
     ratingDistribution,
-    addReview
+    addReview,
+    pagination
   } = useProductReviews(product.productCode);
 
   // Keep a local copy of all reviews to filter client-side
@@ -57,6 +58,10 @@ export default function ProductReviews({ product, toast }) {
   
   // Store a reference to the original rating distribution that won't change when filtering
   const [originalRatingDistribution, setOriginalRatingDistribution] = useState([]);
+  
+  // Calculate dynamic review count and average rating from reviews collection
+  const [dynamicReviewCount, setDynamicReviewCount] = useState(0);
+  const [dynamicAverageRating, setDynamicAverageRating] = useState(0);
 
   // Initialize all reviews and distribution when data is fetched
   useEffect(() => {
@@ -74,7 +79,26 @@ export default function ProductReviews({ product, toast }) {
     if (ratingDistribution && ratingDistribution.length > 0) {
       setOriginalRatingDistribution(ratingDistribution);
     }
-  }, [fetchedReviews, initialLoading, ratingDistribution]);
+    
+    // Update dynamic review count from pagination data
+    if (pagination && pagination.total !== undefined) {
+      setDynamicReviewCount(pagination.total);
+    }
+    
+    // Calculate dynamic average rating from rating distribution
+    if (ratingDistribution && ratingDistribution.length > 0) {
+      const totalReviews = ratingDistribution.reduce((sum, item) => sum + item.count, 0);
+      if (totalReviews > 0) {
+        const weightedSum = ratingDistribution.reduce((sum, item) => sum + (item.rating * item.count), 0);
+        const averageRating = weightedSum / totalReviews;
+        setDynamicAverageRating(parseFloat(averageRating.toFixed(1)));
+      } else {
+        setDynamicAverageRating(0);
+      }
+    } else {
+      setDynamicAverageRating(0);
+    }
+  }, [fetchedReviews, initialLoading, ratingDistribution, pagination]);
 
   // Client-side filtering function
   const filterReviews = useCallback((selectedRating) => {
@@ -208,6 +232,17 @@ export default function ProductReviews({ product, toast }) {
           setFilteredReviews(prev => [newReview, ...prev]);
         }
         
+        // Update dynamic counts immediately
+        setDynamicReviewCount(prev => prev + 1);
+        
+        // Recalculate average rating with the new review
+        const updatedReviews = [newReview, ...allReviews];
+        if (updatedReviews.length > 0) {
+          const totalRating = updatedReviews.reduce((sum, review) => sum + review.rating, 0);
+          const newAverageRating = totalRating / updatedReviews.length;
+          setDynamicAverageRating(parseFloat(newAverageRating.toFixed(1)));
+        }
+        
         toast({
           title: "Review Submitted",
           description: "Thank you for your review!",
@@ -230,16 +265,16 @@ export default function ProductReviews({ product, toast }) {
         {/* Review Summary */}
         <div className="lg:col-span-4 bg-secondary/10 p-6 rounded-none">
           <div className="text-center mb-4">
-            <div className="text-5xl font-bold mb-2">{product.rating || 0}</div>
+            <div className="text-5xl font-bold mb-2">{dynamicAverageRating || 0}</div>
             <div className="flex justify-center mb-1">
               {[...Array(5)].map((_, i) => (
                 <Star
                   key={i}
-                  className={`h-5 w-5 ${i < Math.floor(product.rating || 0) ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`}
+                  className={`h-5 w-5 ${i < Math.floor(dynamicAverageRating || 0) ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`}
                 />
               ))}
             </div>
-            <p className="text-sm text-muted-foreground">Based on {product.reviews || 0} reviews</p>
+            <p className="text-sm text-muted-foreground">Based on {dynamicReviewCount || 0} reviews</p>
           </div>
 
           {/* Rating Distribution */}
@@ -290,20 +325,19 @@ export default function ProductReviews({ product, toast }) {
 
             {/* Review Dialog with Form */}
             <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
-              <DialogContent className="sm:max-w-[500px] max-h-[85vh] rounded-none border-2 border-black dark:border-white">
-                <DialogHeader className="border-b-2 border-black dark:border-white pb-3">
+              <DialogContent className="sm:max-w-[500px] max-h-[80vh] rounded-none border-2 border-black dark:border-white p-0">
+                <DialogHeader className="border-b-2 border-black dark:border-white pb-3 px-6 pt-6">
                   <DialogTitle className="text-lg uppercase tracking-wider font-bold">Review {product.name}</DialogTitle>
                 </DialogHeader>
                 
-                <AnimatePresence mode="wait">
-                  <motion.form 
-                    onSubmit={handleSubmitReview} 
-                    className="space-y-5 mt-5 overflow-y-auto pr-1" 
-                    style={{ maxHeight: "calc(85vh - 100px)" }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
+                {/* Scrollable Content */}
+                <motion.div 
+                  className="overflow-y-auto space-y-5 px-6 py-4" 
+                  style={{ maxHeight: "calc(85vh - 160px)" }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
                     {/* Rating Selection */}
                     <div className="border-l-4 border-black dark:border-white pl-3 py-1">
                       <Label htmlFor="rating" className="text-sm font-bold uppercase tracking-wide">Rating*</Label>
@@ -460,52 +494,51 @@ export default function ProductReviews({ product, toast }) {
                       </p>
                     </motion.div>
                     
-                    {/* Error Message */}
-                    {submitError && (
-                      <motion.div 
-                        className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-l-4 border-red-500 dark:border-red-400 p-3 text-sm"
-                        initial={{ opacity: 0, scaleY: 0, originY: 0 }}
-                        animate={{ opacity: 1, scaleY: 1 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        {submitError}
-                      </motion.div>
-                    )}
-                    
-                    {/* Submit Button */}
+                  {/* Error Message */}
+                  {submitError && (
                     <motion.div 
-                      className="flex justify-end gap-3 pt-2 border-t-2 border-gray-200 dark:border-gray-700 mt-6"
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.6 }}
+                      className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-l-4 border-red-500 dark:border-red-400 p-3 text-sm"
+                      initial={{ opacity: 0, scaleY: 0, originY: 0 }}
+                      animate={{ opacity: 1, scaleY: 1 }}
+                      transition={{ duration: 0.2 }}
                     >
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleReviewDialogClose}
-                        className="rounded-none border-2 border-gray-300 dark:border-gray-600 hover:border-black dark:hover:border-white hover:bg-transparent"
-                      >
-                        CANCEL
-                      </Button>
-                      <Button 
-                        type="submit"
-                        size="sm"
-                        disabled={isSubmitting}
-                        className="rounded-none bg-black hover:bg-black/80 text-white dark:bg-white dark:text-black dark:hover:bg-white/80 uppercase tracking-wider border-2 border-black dark:border-white font-bold"
-                      >
-                        {isSubmitting ? (
-                          <>
-                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                            Submitting...
-                          </>
-                        ) : (
-                          'Submit Review'
-                        )}
-                      </Button>
+                      {submitError}
                     </motion.div>
-                  </motion.form>
-                </AnimatePresence>
+                  )}
+                </motion.div>
+                
+                {/* Fixed Button Footer */}
+                <motion.div 
+                  className="flex justify-end gap-3 pt-8 px-1 bg-transparent"
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2, duration: 0.2 }}
+                >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReviewDialogClose}
+                    className="rounded-none border-2 border-gray-300 dark:border-gray-600 hover:border-black dark:hover:border-white hover:bg-transparent"
+                  >
+                    CANCEL
+                  </Button>
+                  <Button 
+                    onClick={handleSubmitReview}
+                    size="sm"
+                    disabled={isSubmitting}
+                    className="rounded-none bg-black hover:bg-black/80 text-white dark:bg-white dark:text-black dark:hover:bg-white/80 uppercase tracking-wider border-2 border-black dark:border-white font-bold"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Review'
+                    )}
+                  </Button>
+                </motion.div>
               </DialogContent>
             </Dialog>
           </div>
