@@ -23,6 +23,7 @@ Before you begin, ensure you have:
 5. Facebook Developer account
 6. Cloudinary account (for image uploads)
 
+
 ## Environment Setup
 
 Create a `.env.local` file in the root directory with the following variables:
@@ -154,6 +155,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+<<<<<<< Updated upstream
+=======
 
 
 
+>>>>>>> Stashed changes

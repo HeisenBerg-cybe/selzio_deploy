@@ -5,7 +5,7 @@ import { ObjectId } from 'mongodb';
 
 export async function GET(req, { params }) {
   try {
-    const { productCode } = params;
+    const { productCode } = await params;
 
     if (!productCode) {
       return NextResponse.json(
@@ -53,25 +53,32 @@ export async function PUT(req, { params }) {
       return user; // Return the error response
     }
 
-    const { productCode } = params;
+    const { productCode } = await params;
     const body = await req.json();
     
     // Get products collection
     const productsCollection = await getProductsCollection();
 
+    // Clean up the product data - remove undefined values
+    const cleanedData = Object.entries(body).reduce((acc, [key, value]) => {
+      if (value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+
     // Add updated timestamp and modifier info
-    const updatedProduct = {
-      ...body,
+    const updateData = {
+      ...cleanedData,
       updatedBy: user.id,
       updatedAt: new Date()
     };
-
     let result;
     
     // Try to update by productCode first
     result = await productsCollection.findOneAndUpdate(
       { productCode },
-      { $set: updatedProduct },
+      { $set: updateData },
       { returnDocument: 'after' }
     );
 
@@ -79,7 +86,7 @@ export async function PUT(req, { params }) {
     if (!result && ObjectId.isValid(productCode)) {
       result = await productsCollection.findOneAndUpdate(
         { _id: new ObjectId(productCode) },
-        { $set: updatedProduct },
+        { $set: updateData },
         { returnDocument: 'after' }
       );
     }
@@ -88,7 +95,10 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      success: true,
+      product: result
+    });
   } catch (error) {
     console.error('Product update error:', error);
     return NextResponse.json(
@@ -107,7 +117,7 @@ export async function DELETE(req, { params }) {
       return user; // Return the error response
     }
 
-    const { productCode } = params;
+    const { productCode } = await params;
     
     // Get products collection
     const productsCollection = await getProductsCollection();
