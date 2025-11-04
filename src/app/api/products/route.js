@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getProductsCollection } from '@/lib/mongodb';
 import { requireAuth, requireAdmin } from '@/middleware/auth';
+import { revalidatePath, revalidateTag } from 'next/cache';
+
+// Force this route to be dynamic and never cached
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(req) {
   try {
@@ -49,30 +54,31 @@ export async function GET(req) {
         const sourceProduct = await productsCollection.findOne({ productCode: relatedTo });
         
         if (sourceProduct) {
-          // Clear any existing query and build a new one
-          // We'll use an $or query to match by different criteria
-          const relatedQuery = { productCode: { $ne: relatedTo } };
+          // Build query to find related products
+          // MUST be in same category (mandatory)
+          const relatedQuery = { 
+            productCode: { $ne: relatedTo },
+            category: sourceProduct.category  // Mandatory: same category
+          };
+          
+          // PREFER same subcategory (if exists)
+          // This will narrow down further (e.g., only show t-shirts for t-shirts, not pants)
+          if (sourceProduct.subcategory) {
+            relatedQuery.subcategory = sourceProduct.subcategory;
+          }
+          
+          // Additional optional filters for better matching
           const orConditions = [];
           
-          // Priority 1: Top selling products
-          if (topSelling !== 'false') {
-            orConditions.push({ topSelling: true });
-          }
-          
-          // Priority 2: Same category/subcategory
-          if (sourceProduct.category) {
-            orConditions.push({ category: sourceProduct.category });
-          }
-          
-          if (sourceProduct.subcategory) {
-            orConditions.push({ subcategory: sourceProduct.subcategory });
-          }
-          
-          // Priority 3: Matching tags
+          // Matching tags (for more relevant suggestions)
           if (sourceProduct.tags && sourceProduct.tags.length > 0) {
             orConditions.push({ tags: { $in: sourceProduct.tags } });
           }
           
+          // Top selling products in same category
+          orConditions.push({ topSelling: true });
+          
+          // If we have optional conditions, add them as OR
           if (orConditions.length > 0) {
             relatedQuery.$or = orConditions;
           }
@@ -189,6 +195,17 @@ export async function POST(req) {
     
     // Fetch the created product
     const createdProduct = await productsCollection.findOne({ _id: result.insertedId });
+    
+    // Revalidate all product-related paths and tags
+    try {
+      revalidatePath('/store');
+      revalidatePath('/');
+      revalidatePath('/products/[category]', 'page');
+      revalidateTag('products');
+      revalidateTag('homepage');
+    } catch (revalidateError) {
+      console.warn('Cache revalidation warning:', revalidateError);
+    }
     
     return NextResponse.json(
       { 

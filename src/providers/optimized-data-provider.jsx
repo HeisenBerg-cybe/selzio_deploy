@@ -5,8 +5,8 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo } 
 const DataContext = createContext();
 
 // Cache duration constants
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (reduced from 10)
-const HTTP_CACHE_DURATION = 300; // 5 minutes in seconds
+const CACHE_DURATION = 60 * 1000; // 1 minute (reduced from 10)
+const HTTP_CACHE_DURATION = 60; // 1 minute in seconds
 
 // Global cache to prevent duplicate requests across component instances
 let globalCache = {
@@ -322,12 +322,18 @@ export const OptimizedDataProvider = ({ children }) => {
 
   // Force refresh function (bypasses cache)
   const refresh = useCallback(async () => {
+    // Invalidate all caches
     globalCache = {
       homepage: { data: null, timestamp: 0, loading: false },
       products: { data: null, timestamp: 0, loading: false }
     };
-    await loadHomepageData();
-  }, [loadHomepageData]);
+    
+    // Reload both homepage and full data to ensure everything is fresh
+    await Promise.all([
+      loadHomepageData(),
+      loadFullProductsData()
+    ]);
+  }, [loadHomepageData, loadFullProductsData]);
 
   // Expose a function to load full data on demand
   const ensureFullDataLoaded = useCallback(() => {
